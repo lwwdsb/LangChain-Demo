@@ -5,7 +5,7 @@
 Dynamic Planning & Hybrid Retrieval Agent with Self-Reflection
 
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue?style=for-the-badge&logo=python)
-![LangChain](https://img.shields.io/badge/LangChain-v0.2-green?style=for-the-badge&logo=chainlink)
+![LangChain](https://img.shields.io/badge/LangChain-v1.2.13-green?style=for-the-badge&logo=chainlink)
 ![OpenAI](https://img.shields.io/badge/LLM-GPT--4o-orange?style=for-the-badge&logo=openai)
 ![License](https://img.shields.io/badge/License-MIT-lightgrey?style=for-the-badge)
 
