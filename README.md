@@ -1,52 +1,63 @@
-# LangChain Advanced Agent: Planner, RAG & Critic
+<div align="center">
 
-![LangChain](https://img.shields.io/badge/LangChain-v0.1.20-blue)
-![OpenAI](https://img.shields.io/badge/OpenAI-GPT--4o-green)
-![Python](https://img.shields.io/badge/Python-3.10%2B-yellow)
+# 🤖 LangChain Intelligent Agent
+### 动态规划 | 混合检索 | 自我反思
+Dynamic Planning & Hybrid Retrieval Agent with Self-Reflection
 
-本项目展示了一个基于 **LangChain** 构建的高级 Agent 架构。不同于普通的问答机器人，该系统引入了 **Planner（规划器）**、**Executor（执行器）** 和 **Critic（批评家/审稿人）** 机制，实现了具备**自我规划**和**自我反思**能力的智能代理。
+![Python](https://img.shields.io/badge/Python-3.10%2B-blue?style=for-the-badge&logo=python)
+![LangChain](https://img.shields.io/badge/LangChain-v0.2-green?style=for-the-badge&logo=chainlink)
+![OpenAI](https://img.shields.io/badge/LLM-GPT--4o-orange?style=for-the-badge&logo=openai)
+![License](https://img.shields.io/badge/License-MIT-lightgrey?style=for-the-badge)
 
-## 🌟 核心功能 (Key Features)
+[功能特性](#-功能特性-features) • [架构流程](#-架构流程-architecture) • [快速开始](#-快速开始-quick-start) • [演示案例](#-演示案例-demos)
 
-本项目实现了一个复杂的 **Agentic Workflow**，包含以下核心组件：
+</div>
 
-1.  **RAG (检索增强生成)**:
-    * 使用 FAISS 和 OpenAI Embeddings 构建本地向量知识库。
-    * 包含 LangChain、RAG、Agent 的基础技术文档。
-2.  **Planner (规划器)**:
-    * 在执行任务前，先生成严格的 4 步执行计划（搜索 -> 阅读 -> 分析 -> 输出）。
-    * 输出结构化的 JSON 格式计划。
-3.  **Executor (执行代理)**:
-    * 基于 `OpenAI Functions` 的 Agent。
-    * 具备调用工具（知识库检索、长期记忆检索）的能力。
-4.  **Critic (批评家/审稿人)**:
-    * **自我反思机制**：对每一步的执行结果进行打分和评估。
-    * **Verdict 机制**：
-      * `accept`: 结果通过，继续下一步。
-      * `minor_fix`: 结果尚可，但需要微调（自动调用 LLM 进行 Patch）。
-      * `major_fix`: 结果严重错误，触发 **Re-Plan（重新规划）** 流程。
-5.  **Memory (记忆系统)**:
-    * **Short-term**: 基于 Session ID 的会话历史管理。
-    * **Long-term**: 模拟长期向量记忆存储（可扩展）。
+---
 
-## 🛠️ 技术栈 (Tech Stack)
+## 📖 项目简介 (Introduction)
 
-* **LangChain (v0.1.20)**: 核心框架。
-* **OpenAI GPT-4o-mini**: 用于规划、执行和评估的底层大模型。
-* **FAISS**: 向量数据库，用于 RAG 检索。
-* **TikToken**: Token 计算工具。
+这是一个基于 **LangChain** 构建的高级 **Agentic Workflow**（代理工作流）系统。
 
-## 🚀 快速开始 (Quick Start)
+不同于传统的问答机器人，该 Agent 拥有一个**“大脑”**（Planner），能够根据用户的问题类型**动态生成**执行计划。它不再盲目地只查知识库，而是像人类一样思考：是该查内部文档？还是去谷歌搜索最新消息？亦或是直接逻辑推理？
 
-### 1. 环境准备
+此外，系统内置了 **Critic（批评家）** 节点，对 Agent 的执行结果进行**自我反思**和打分，确保持续优化输出质量。
 
-建议使用 Python 3.10+ 环境。
+## ✨ 功能特性 (Features)
 
-```bash
-# 克隆仓库
-git clone [https://github.com/your-username/your-repo-name.git](https://github.com/your-username/your-repo-name.git)
-cd your-repo-name
+* **🧠 动态任务路由 (Dynamic Routing)**
+    * **技术类问题** $\rightarrow$ 自动调用 RAG (FAISS 本地向量库)。
+    * **时事/通用类** $\rightarrow$ 自动调用 DuckDuckGo 联网搜索。
+    * **闲聊/逻辑类** $\rightarrow$ 纯 LLM 推理，跳过检索步骤。
 
-# 安装依赖
-pip install langchain==0.1.20 langchain-openai langchain-community faiss-cpu tiktoken
-```
+* **🕵️ 智能规划器 (Planner Node)**
+    * 摆脱硬编码的 Chain，Agent 会生成结构化的 JSON 步骤表（如 `['search_web', 'summarize']`）。
+
+* **⚖️ 自我反思循环 (Critic Loop)**
+    * 执行完每一步后，Critic 会评估结果质量。
+    * **Verdict 机制**：如果不通过，触发 `Major Fix`（重新规划）或 `Minor Fix`（修正答案）。
+
+* **📚 混合知识库 (Hybrid Knowledge)**
+    * 结合了**私有领域知识**与**互联网实时信息**。
+
+## 🧩 架构流程 (Architecture)
+
+系统通过状态机（State Graph）管理数据流转：
+
+```mermaid
+graph TD
+    User(用户输入) --> Planner{Planner 规划器}
+    
+    Planner -->|技术问题| PlanRAG[计划: 查本地库]
+    Planner -->|时事问题| PlanWeb[计划: 联网搜索]
+    Planner -->|逻辑问题| PlanThink[计划: 直接推理]
+    
+    PlanRAG & PlanWeb & PlanThink --> Executor(Executor 执行器)
+    
+    Executor -->|执行步骤| Tools[调用工具: FAISS / DDG]
+    Tools --> Executor
+    
+    Executor -->|步骤完成| Critic{Critic 审稿人}
+    
+    Critic -->|❌ 驳回| Planner
+    Critic -->|✅ 通过| Output(最终输出)
