@@ -1,15 +1,19 @@
 <div align="center">
 
 # 🤖 LangChain Intelligent Agent
-### 动态规划 | 混合检索 | 自我反思
-Dynamic Planning & Hybrid Retrieval Agent with Self-Reflection
+### 🤖 LangChain 智能代理
 
-![Python](https://img.shields.io/badge/Python-3.10%2B-blue?style=for-the-badge&logo=python)
-![LangChain](https://img.shields.io/badge/LangChain-v1.2.13-green?style=for-the-badge&logo=chainlink)
-![OpenAI](https://img.shields.io/badge/LLM-GPT--4o-orange?style=for-the-badge&logo=openai)
-![License](https://img.shields.io/badge/License-MIT-lightgrey?style=for-the-badge)
+**动态规划 | 混合检索 | 自我反思 | 长期记忆**
+*Dynamic Planning & Hybrid Retrieval Agent with Self-Reflection & Long-Term Memory*
 
-[功能特性](#-功能特性-features) • [架构流程](#-架构流程-architecture) • [快速开始](#-快速开始-quick-start) • [演示案例](#-演示案例-demos)
+具有自我反思能力、能够动态规划任务并拥有长期记忆的混合检索代理
+
+![Python](https://img.shields.io/badge/PYTHON-3.10+-blue)
+![LangChain](https://img.shields.io/badge/LANGCHAIN-v1.2.16-green)
+![LLM](https://img.shields.io/badge/LLM-GPT--4o-orange)
+![License](https://img.shields.io/badge/LICENSE-MIT-lightgrey)
+
+[功能特性](#-功能特性-features) • [架构流程](#-架构流程-architecture) • [演示案例](#-演示案例-use-cases)
 
 </div>
 
@@ -17,47 +21,53 @@ Dynamic Planning & Hybrid Retrieval Agent with Self-Reflection
 
 ## 📖 项目简介 (Introduction)
 
-这是一个基于 **LangChain** 构建的高级 **Agentic Workflow**（代理工作流）系统。
+这是一个基于 **LangChain** 与 **LangGraph** 构建的高级 Agentic Workflow（代理工作流）系统。
 
-不同于传统的问答机器人，该 Agent 拥有一个**“大脑”**（Planner），能够根据用户的问题类型**动态生成**执行计划。它不再盲目地只查知识库，而是像人类一样思考：是该查内部文档？还是去谷歌搜索最新消息？亦或是直接逻辑推理？
+不同于传统的问答机器人或硬编码的 Chain，该 Agent 拥有一个“大脑”（Planner），能够根据用户的问题类型动态生成**执行计划**。它不再盲目地只查知识库，而是像人类一样思考：是该查内部文档？去谷歌搜索最新消息？调用长期记忆？亦或是直接逻辑推理？
 
-此外，系统内置了 **Critic（批评家）** 节点，对 Agent 的执行结果进行**自我反思**和打分，确保持续优化输出质量。
+此外，系统内置了 **Critic（批评家）** 节点进行自我反思，并全新引入了 **Silent Memory（静默记忆）** 机制，让 Agent 能够“记住”你的偏好，实现真正个性化的智能陪伴。
 
 ## ✨ 功能特性 (Features)
 
 * **🧠 动态任务路由 (Dynamic Routing)**
-    * **技术类问题** $\rightarrow$ 自动调用 RAG (FAISS 本地向量库)。
-    * **时事/通用类** $\rightarrow$ 自动调用 DuckDuckGo 联网搜索。
-    * **闲聊/逻辑类** $\rightarrow$ 纯 LLM 推理，跳过检索步骤。
+  * **技术类问题** ➔ 自动调用 RAG（FAISS 本地向量库）。
+  * **时事/通用类** ➔ 自动调用 DuckDuckGo 联网搜索。
+  * **个人/历史类** ➔ 自动唤醒 `search_memory` 读取历史上下文。
+  * **闲聊/逻辑类** ➔ 纯 LLM 推理，跳过检索步骤。
 
-* **🕵️ 智能规划器 (Planner Node)**
-    * 摆脱硬编码的 Chain，Agent 会生成结构化的 JSON 步骤表（如 `['search_web', 'summarize']`）。
+* **💾 静默长期记忆 (Silent Long-Term Memory) `[NEW]`**
+  * **无感写入**：在对话结束前，后台静默节点（Memory Updater）会自动分析对话，提取有价值的用户偏好、设定或事实，并悄悄存入独立的 FAISS 记忆库。
+  * **主动回忆**：当用户提问涉及历史信息时，Planner 会主动规划提取记忆，实现“越聊越懂你”的连续性体验。
+
+* **🗺️ 智能规划器 (Planner Node)**
+  * 摆脱固定模板的限制，Agent 会根据目标生成结构化的 JSON 步骤表（如 `['search_memory', 'reason', 'output']`），按部就班执行。
 
 * **⚖️ 自我反思循环 (Critic Loop)**
-    * 执行完每一步后，Critic 会评估结果质量。
-    * **Verdict 机制**：如果不通过，触发 `Major Fix`（重新规划）或 `Minor Fix`（修正答案）。
-
-* **📚 混合知识库 (Hybrid Knowledge)**
-    * 结合了**私有领域知识**与**互联网实时信息**。
+  * 执行完每一步后，Critic 会评估结果质量。如果判断未完成目标，会触发重试机制，打回重新规划（Re-planning），确保最终输出质量。
 
 ## 🧩 架构流程 (Architecture)
 
-系统通过状态机（State Graph）管理数据流转：
+系统通过 **LangGraph** 状态机（State Graph）严格管理数据流转：
 
 ```mermaid
 graph TD
-    User(用户输入) --> Planner{Planner 规划器}
+    Start((用户输入)) --> Planner[🧠 Planner Node<br>生成执行步骤 JSON]
+    Planner --> Executor[⚙️ Executor Node<br>调用工具执行动作]
     
-    Planner -->|技术问题| PlanRAG[计划: 查本地库]
-    Planner -->|时事问题| PlanWeb[计划: 联网搜索]
-    Planner -->|逻辑问题| PlanThink[计划: 直接推理]
+    Executor --> Critic{🧐 Critic Node<br>反思与评估}
     
-    PlanRAG & PlanWeb & PlanThink --> Executor(Executor 执行器)
+    Critic -- "Reject (未通过)" --> Planner
+    Critic -- "Accept (通过)" --> MemoryUpdater[🤫 Memory Updater<br>静默提取并保存记忆]
+    Critic -- "Max Retries" --> MemoryUpdater
     
-    Executor -->|执行步骤| Tools[调用工具: FAISS / DDG]
-    Tools --> Executor
-    
-    Executor -->|步骤完成| Critic{Critic 审稿人}
-    
-    Critic -->|❌ 驳回| Planner
-    Critic -->|✅ 通过| Output(最终输出)
+    MemoryUpdater --> End((输出回答并结束))
+
+    subgraph Tools [可用工具集]
+        direction TB
+        T1(FAISS 知识库)
+        T2(DuckDuckGo 搜索)
+        T3(FAISS 长期记忆)
+    end
+    Executor -. "search_local" .-> T1
+    Executor -. "search_web" .-> T2
+    Executor -. "search_memory" .-> T3
