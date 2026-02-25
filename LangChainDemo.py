@@ -138,6 +138,40 @@ agent_prompt = ChatPromptTemplate.from_messages([
 
 llm_with_tools = llm.bind_tools(tools)
 
+"""Memory节点"""
+
+def update_memory_node(state):
+    print("   🤫 [静默后台] 正在评估是否需要记录新记忆...")
+    goal = state.get("goal")
+
+    # 获取系统最终的输出
+    step_outputs = state.get("step_outputs", [])
+    final_answer = step_outputs[-1] if step_outputs else ""
+
+    # 让 LLM 判断是否需要记忆
+    prompt = f"""
+    你是一个负责管理长期记忆的后台助手。
+    请分析用户的输入和系统的回答，提取出值得长期保存的用户个人信息、偏好、设定的事实或重要背景。
+
+    规则：
+    1. 如果只是普通的问答、查资料、闲聊，没有任何需要记住的实质性个人信息，请只回复 "NONE"。
+    2. 如果发现了需要记住的个人信息（如“我叫XXX”，“我喜欢XXX”），请用第三人称、一句话简明扼要地总结出来。
+
+    用户输入: "{goal}"
+    系统回答: "{final_answer}"
+    """
+
+    memory_content = run_llm(prompt).strip()
+
+    # 如果判断有价值，就悄悄写入 FAISS 向量库
+    if memory_content != "NONE" and "NONE" not in memory_content.upper():
+        long_term_store.add_documents([Document(page_content=memory_content)])
+        print(f"   💾 [静默后台] 已将新记忆存入向量库：{memory_content}")
+    else:
+        print("   💤 [静默后台] 本次对话无重要信息，无需更新记忆。")
+
+    return state  # 这个节点不改变主流程的 state，只是做个旁路操作
+
 """Planner 节点"""
 
 # 引入 DuckDuckGo
@@ -148,22 +182,23 @@ def planner_node(state):
     print("🔥 进入 planner_node (动态规划)")
     goal = state.get("goal")
 
-    # 核心修改：Prompt 不再强制固定步骤，而是让 LLM 选择工具
+    # 核心修改：在可用动作中加入读写记忆的选项
     prompt = f"""
     你是一个任务规划师。请根据用户目标生成执行步骤列表。
 
     可用动作(Action)说明：
     1. "search_local": 仅当问题关于 LangChain, RAG, Agent 等内部技术文档时使用。
-    2. "search_web": 当问题关于名人(如 Steph Curry)、时事、通用知识时使用。
-    3. "reason": 当问题是逻辑推理、数学计算、或普通闲聊时使用（不需要搜索）。
-    4. "output": 最后一步必须是 output。
+    2. "search_web": 当问题关于名人、时事、通用知识时使用。
+    3. "search_memory": 当用户询问历史记录、之前说过的话，或明确要求回忆某事时使用。
+    4. "reason": 当问题是纯逻辑推理、计算、或普通闲聊时使用。
+    5. "summarize": 综合已有搜索结果进行回答。
+    6. "output": 最后一步必须是 output。
 
     用户目标："{goal}"
 
     请只输出一个 JSON 字符串列表，不要其他废话。
     示例 1 (技术问题): ["search_local", "summarize", "output"]
-    示例 2 (通用问题): ["search_web", "summarize", "output"]
-    示例 3 (简单对话): ["reason", "output"]
+    示例 2 (询问历史信息): ["search_memory", "reason", "output"]
     """
 
     raw = run_llm(prompt)
@@ -172,7 +207,6 @@ def planner_node(state):
     try:
         plan = json.loads(raw)
     except:
-        # 正则兜底解析
         match = re.search(r"(\[.*\])", raw, re.S)
         plan = json.loads(match.group(1)) if match else ["reason", "output"]
 
@@ -204,20 +238,30 @@ def executor_node(state):
     if step == "search_local":
         # 查本地向量库
         docs = retriever.invoke(state["goal"])
-        output = f"【本地知识库检索结果】：\n" + "\n".join([d.page_content for d in docs])
+        output = f"【本地知识库检索结果】:\n" + "\n".join([d.page_content for d in docs])
 
     elif step == "search_web":
         # 查 DuckDuckGo
         print("   🌐 正在联网搜索...")
         try:
             web_result = search_tool.invoke(state["goal"])
-            output = f"【互联网搜索结果】：\n{web_result}"
+            output = f"【互联网搜索结果】:\n{web_result}"
         except Exception as e:
             output = f"搜索失败: {str(e)}"
 
+    # 👇 新增：读取记忆
+    elif step == "search_memory":
+        print("   🧠 正在检索长期记忆...")
+        docs = long_term_store.similarity_search(state["goal"], k=2)
+        output = f"【长期记忆检索结果】：\n" + "\n".join([d.page_content for d in docs])
+
     elif step == "reason":
-        # 纯思考/闲聊
-        output = run_llm(f"请直接回答或思考以下问题，不要搜索：{state['goal']}")
+        # 如果前面有记忆结果，要带上记忆一起思考
+        context = "\n".join(state.get("step_outputs", []))
+        if context:
+            output = run_llm(f"基于以下上下文：\n{context}\n\n回答问题:{state['goal']}")
+        else:
+            output = run_llm(f"请直接回答或思考以下问题，不要搜索：{state['goal']}")
 
     elif step == "summarize":
         # 总结前面的搜索结果
@@ -305,6 +349,7 @@ graph = StateGraph(AgentState)
 graph.add_node("planner", planner_node)
 graph.add_node("executor", executor_node)
 graph.add_node("critic", critic_node)
+graph.add_node("memory_updater", update_memory_node)
 
 graph.set_entry_point("planner")
 
@@ -324,20 +369,44 @@ def critic_decision(state):
 
     if verdict.get("accept"):
         print("🎉 Critic accepted!")
-        return END
+        return "update_memory"
 
     if retries >= 3:
-        print("⚠️ 达到最大重试次数，强制结束")
-        return END
+        print("⚠️ 达到最大重试次数，进入记忆更新并结束")
+        return "update_memory" # 重试多次仍然失败，也把之前的上下文记忆一下
 
     print(f"🔄 Critic rejected (Retries: {retries}). Re-planning...")
     return "planner"
 
-graph.add_conditional_edges("critic", critic_decision)
+graph.add_conditional_edges(
+    "critic",
+    critic_decision,
+    {
+        "update_memory": "memory_updater", # 路由到真实节点
+        "planner": "planner",
+        END: END
+    }
+)
 
+#记忆更新节点执行完毕后，整个流程真正结束
+graph.add_edge("memory_updater", END)
+
+#编译图
 app = graph.compile()
 
 """测试运行"""
+
+result1 = app.invoke({
+    "goal": "我的名字叫李伟文，我最喜欢打三角洲。"
+}, config={"recursion_limit": 50})
+
+print("\n🤖:", result1["step_outputs"][-1])
+
+result2 = app.invoke({
+    "goal": "我叫什么名字，我喜欢干什么？"
+}, config={"recursion_limit": 50})
+
+print("\n🤖:", result2["step_outputs"][-1])
 
 result = app.invoke({
     "goal": "写一篇关于 RAG 的 300 字中文简介"
